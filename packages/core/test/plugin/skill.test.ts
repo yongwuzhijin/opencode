@@ -54,6 +54,51 @@ describe("SkillPlugin.Plugin", () => {
       )
       expect(report?.content).toContain("- opencode version: 1.2.3")
       expect(report?.content).toContain("- install/channel: beta")
+
+      const typst = skills.find((item) => item.id === "typst-math")
+      const worksheets = skills.find((item) => item.id === "math-worksheets")
+      const cn = skills.find((item) => item.id === "cn-math-problem-design")
+      expect(skills).toContainEqual(
+        expect.objectContaining({
+          id: "typst-math",
+          name: "Typst Math",
+          path: "skill://typst-math/SKILL.md",
+          description: expect.stringContaining("Typst"),
+        }),
+      )
+      expect(skills).toContainEqual(
+        expect.objectContaining({
+          id: "math-worksheets",
+          name: "Math Worksheets",
+          path: "skill://math-worksheets/SKILL.md",
+          description: expect.stringContaining("SymPy"),
+        }),
+      )
+      expect(skills).toContainEqual(
+        expect.objectContaining({
+          id: "cn-math-problem-design",
+          name: "中国数学命题",
+          path: "skill://cn-math-problem-design/SKILL.md",
+          description: expect.stringContaining("义务教育数学课程标准"),
+        }),
+      )
+      expect(typst?.description).toContain("CeTZ")
+      expect(worksheets?.description).toContain("worksheet")
+      expect(cn?.description).toContain("中考")
+      expect(typst?.content).toContain("skill://")
+      expect(typst?.content).toContain("@preview/cetz")
+      expect(typst?.content).toContain("typst compile")
+      expect(worksheets?.content).toContain("python3")
+      expect(worksheets?.content).toContain("sympy")
+      expect(worksheets?.content).toContain("tectonic")
+      expect(cn?.content).toContain("义务教育数学课程标准（2022年版）")
+      expect(cn?.content).toContain("基础")
+      expect(cn?.content).toContain("压轴")
+      expect(cn?.content).toContain("sympy")
+      for (const item of [typst, worksheets, cn]) {
+        expect(item?.content).toContain("Write source files in the user's workspace")
+        expect(item?.content).toContain("Do not run commands against skill:// paths")
+      }
     }),
   )
 
