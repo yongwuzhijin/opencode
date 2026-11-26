@@ -2,7 +2,6 @@
 import { $ } from "bun"
 import { cp, mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
-import { getConfig } from "../electron-builder.config"
 import { getCurrentCli, resolveChannel } from "./utils"
 
 // Packages the built app (out/) for OPENCODE_TARGET into dist/desktop at the repository root, unsigned:
@@ -63,17 +62,10 @@ if (!app && os === "win") {
 }
 
 // electron-builder writes resources/app-update.yml only for dmg, zip and nsis targets, not for --dir builds.
-// electron-updater reads its feed from that file, so write the one those targets would.
+// OpenCode then writes the upstream feed so electron-updater can find it. Seal removes that file: the feed is
+// https://opencode.ai and a packaged app would download OpenCode over itself. The updater also stays off at runtime.
 async function writeUpdateConfig(resources: string) {
-  const publish = getConfig().publish
-  const name: string = (await Bun.file("package.json").json()).name
-  await Bun.write(
-    path.join(resources, "app-update.yml"),
-    [
-      `provider: ${publish.provider}`,
-      `url: ${publish.url}`,
-      `channel: ${publish.channel}`,
-      `updaterCacheDirName: '${name.replace(/[/\\:*?"<>|]/g, "").toLowerCase()}-updater'`,
-    ].join("\n") + "\n",
-  )
+  const feed = path.join(resources, "app-update.yml")
+  await rm(feed, { force: true })
+  console.log(`not shipping an update feed at ${feed}`)
 }

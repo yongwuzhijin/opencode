@@ -8,20 +8,23 @@ import { Updater } from "@opencode/plugin/gui/updater"
 import { UpdaterPreferences } from "./contract"
 import { logContext } from "./log"
 import { make } from "./machine"
+import { desktopUpdatesEnabled } from "./seal"
 
 const setup: Plugin.MainSetup = async (ctx) => {
   const builtin = builtinMainContext(ctx)
   const build = ctx.app
   const lifecycle = builtin.lifecycle
   // electron-updater reads its feed from app-update.yml. Distro packages that update the app themselves (such as the
-  // AUR's opencode-desktop-bin) delete it, and every check would then fail.
-  const enabled = build.packaged && existsSync(join(process.resourcesPath, "app-update.yml"))
+  // AUR's opencode-desktop-bin) delete it, and every check would then fail. Seal never checks: that feed is upstream.
+  const feed = build.packaged && existsSync(join(process.resourcesPath, "app-update.yml"))
+  const enabled = desktopUpdatesEnabled(build.packaged, feed)
   // Holds no resources, so it needs no cleanup.
   const context = logContext(ctx.log.write)
   const runPromise = Effect.runPromiseWith(context)
   const runFork = Effect.runForkWith(context)
 
-  if (build.packaged && !enabled) runFork(Effect.logInfo("auto updater disabled, app-update.yml is missing"))
+  if (build.packaged && !enabled)
+    runFork(Effect.logInfo(feed ? "auto updater disabled" : "auto updater disabled, app-update.yml is missing"))
 
   // The update main staged for the next start; stored before in the updater's settings file.
   const ready = builtin.storage.store("ready", {
