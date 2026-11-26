@@ -16,7 +16,7 @@ on:
           - arm64
           - x64
       channel:
-        description: OPENCODE_CHANNEL
+        description: Desktop channel. prod compiles the bundled CLI as latest so both use service.json
         required: true
         type: choice
         default: prod
@@ -116,6 +116,12 @@ jobs:
               ;;
           esac
 
+      # The desktop client polls ~/.local/state/opencode/service.json (packages/client fallback).
+      # The CLI writes that name for latest, dev, beta and next. Desktop channel "prod" is not a CLI
+      # channel: it writes service-prod.json, so the app treats the service as missing and respawns
+      # until it times out. Prod therefore compiles the CLI as latest. packages/script throws for a
+      # latest build that has no OPENCODE_VERSION; the string below is what lands in the CLI package
+      # and in opencode-cli.version. dev and beta already share service.json, so they keep their names.
       - name: Build CLI
         working-directory: packages/cli
         env:
@@ -123,6 +129,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ "$OPENCODE_CHANNEL" = "prod" ]; then
+            export OPENCODE_CHANNEL=latest
+            OPENCODE_VERSION="0.0.0-prod-${GITHUB_RUN_NUMBER}"
+            if [ "$GITHUB_RUN_ATTEMPT" != 1 ]; then
+              OPENCODE_VERSION="${OPENCODE_VERSION}.${GITHUB_RUN_ATTEMPT}"
+            fi
+            export OPENCODE_VERSION
+          fi
+          echo "CLI channel ${OPENCODE_CHANNEL} registers service.json"
           version="$(python3 -c 'import json; print(json.load(open("../../package.json"))["packageManager"].split("@", 1)[1])')"
           test -n "$version"
           echo "Compiling the fork CLI with bun-v${version} for ${OPENCODE_TARGET}"
@@ -150,7 +165,8 @@ jobs:
         run: bun run build
 
       # dev/beta would have downloaded the published CLI if dist was missing. The version file is copied
-      # from the package we just built (0.0.0-<channel>-<run>), which a published package does not use.
+      # from the package we just built (0.0.0-<desktop channel>-<run>). Prod uses that same preview
+      # version while the CLI channel is latest. A published package does not use it.
       - name: Assert desktop bundled the fork CLI
         run: |
           set -euo pipefail

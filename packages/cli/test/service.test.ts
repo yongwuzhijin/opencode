@@ -297,6 +297,8 @@ test("service filenames share release channels and identify preview channels", (
   expect(ServiceConfig.filename("dev")).toBe("service.json")
   expect(ServiceConfig.filename("beta")).toBe("service.json")
   expect(ServiceConfig.filename("next")).toBe("service.json")
+  // Desktop calls production "prod". The CLI does not: that name writes a channel file the desktop never reads.
+  expect(ServiceConfig.filename("prod")).toBe("service-prod.json")
   expect(ServiceConfig.filename("local")).toBe("service-local.json")
   expect(ServiceConfig.filename("preview-a")).toBe("service-preview-a.json")
   expect(ServiceConfig.filename("preview/a")).toBe("service-preview-a.json")
