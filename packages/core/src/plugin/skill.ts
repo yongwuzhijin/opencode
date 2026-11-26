@@ -14,6 +14,9 @@ import os from "os"
 import opencodeContent from "./skill/opencode.md" with { type: "text" }
 import reportContent from "./skill/report.md" with { type: "text" }
 import apiContent from "./skill/opencode-api.md" with { type: "text" }
+import typstMathContent from "./skill/typst-math.md" with { type: "text" }
+import mathWorksheetsContent from "./skill/math-worksheets.md" with { type: "text" }
+import cnMathProblemDesignContent from "./skill/cn-math-problem-design.md" with { type: "text" }
 import { files } from "./skill/opencode/api.js"
 
 export const OpencodeContent = opencodeContent
@@ -23,6 +26,12 @@ export const OpencodeDescription =
   "Use this skill for any question about OpenCode itself, including how OpenCode works, using or configuring it, migrating from V1 to V2, troubleshooting it, developing plugins or integrations, using the OpenCode SDK, clients, server, or API, and contributing to the OpenCode codebase. Also use it for OpenCode agents, commands, skills, tools, permissions, MCP servers, providers, models, themes, keybinds, formatters, the CLI, TUI, desktop app, and web app."
 const REPORT_DESCRIPTION =
   "Use when the user wants to report an opencode issue or bug. Collect standard diagnostics, add user-specific reproduction context, and publish the issue with GitHub CLI."
+const TYPST_MATH_DESCRIPTION =
+  "Use when writing or compiling Typst 0.15+ math: formulas, numbered equations, multi-line derivations, Chinese or English math typography, or CeTZ geometry and function diagrams. Also use for .typ files, typst compile, and PDF or PNG checks of mathematical notation."
+const MATH_WORKSHEETS_DESCRIPTION =
+  "Use when generating a printable K-12 math worksheet in Chinese or English: a student sheet with answer lines, a separate teacher key with steps, and a SymPy check that must pass before the final PDF. Prefers Typst and can fall back to LaTeX via Tectonic."
+const CN_MATH_PROBLEM_DESIGN_DESCRIPTION =
+  "用于设计中国大陆小学（1–6年级）和初中（7–9年级）数学题、变式、分步解答和可打印试卷。对齐《义务教育数学课程标准（2022年版）》与中考常见题型，按知识点组织基础、巩固、拔高、压轴，定稿前用 SymPy 或独立复核验证答案。Use for mainland China primary and junior-high math problem design."
 
 export const Plugin = define({
   id: "opencode.skill",
@@ -50,6 +59,33 @@ export const Plugin = define({
           description: REPORT_DESCRIPTION,
           path: AbsolutePath.make("skill://report/SKILL.md"),
           content: reportContent,
+        }),
+      )
+      editor.add(
+        Skill.Info.make({
+          id: Skill.ID.make("typst-math"),
+          name: Skill.Name.make("Typst Math"),
+          description: TYPST_MATH_DESCRIPTION,
+          path: AbsolutePath.make("skill://typst-math/SKILL.md"),
+          content: typstMathContent,
+        }),
+      )
+      editor.add(
+        Skill.Info.make({
+          id: Skill.ID.make("math-worksheets"),
+          name: Skill.Name.make("Math Worksheets"),
+          description: MATH_WORKSHEETS_DESCRIPTION,
+          path: AbsolutePath.make("skill://math-worksheets/SKILL.md"),
+          content: mathWorksheetsContent,
+        }),
+      )
+      editor.add(
+        Skill.Info.make({
+          id: Skill.ID.make("cn-math-problem-design"),
+          name: Skill.Name.make("中国数学命题"),
+          description: CN_MATH_PROBLEM_DESIGN_DESCRIPTION,
+          path: AbsolutePath.make("skill://cn-math-problem-design/SKILL.md"),
+          content: cnMathProblemDesignContent,
         }),
       )
     })
