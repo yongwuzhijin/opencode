@@ -1,0 +1,277 @@
+name: Build Seal macOS Desktop
+
+# Unsigned Seal.app for a personal fork. No Apple Developer ID, notarization, Sentry, or upstream cloud secrets.
+# Build packages/cli for this Mac arch before packages/desktop. packages/desktop/script/build.ts copies
+# packages/cli/dist when that directory exists, and otherwise downloads the published OpenCode CLI on dev/beta.
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: macOS CPU architecture
+        required: true
+        type: choice
+        default: arm64
+        options:
+          - arm64
+          - x64
+      channel:
+        description: OPENCODE_CHANNEL
+        required: true
+        type: choice
+        default: prod
+        options:
+          - prod
+          - dev
+          - beta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-seal-mac-${{ github.ref }}-${{ inputs.arch }}-${{ inputs.channel }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build (${{ inputs.arch }}, ${{ inputs.channel }})
+    # arm64 is the standard GitHub-hosted Apple Silicon runner. x64 is the GitHub-hosted Intel runner
+    # release.yml uses for stable desktop builds (macos-15-intel is the other public Intel image).
+    runs-on: ${{ inputs.arch == 'x64' && 'macos-26-intel' || 'macos-15' }}
+    timeout-minutes: 180
+    env:
+      OPENCODE_CHANNEL: ${{ inputs.channel }}
+      SEAL_ARCH: ${{ inputs.arch }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # Prod mac.icon is an Icon Composer package. electron-builder compiles it with actool from Xcode 26.
+      # macos-15 keeps Xcode 16 as the default, so select Xcode 26 before packaging.
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          selected=""
+          best=""
+          for app in /Applications/Xcode_26*.app; do
+            [ -d "$app/Contents/Developer" ] || continue
+            name="${app##*/}"
+            name="${name%.app}"
+            name="${name#Xcode_}"
+            key=""
+            IFS=. read -r -a parts <<< "$name"
+            for part in "${parts[@]}"; do
+              key="${key}.$(printf '%04d' "$part")"
+            done
+            if [ -z "$best" ] || [[ "$key" > "$best" ]]; then
+              best="$key"
+              selected="$app/Contents/Developer"
+            fi
+          done
+          if [ -z "$selected" ]; then
+            echo "Xcode 26 is not installed. Prod packaging compiles resources/icons/icon.icon with actool." >&2
+            xcodebuild -version || true
+            if [ "$OPENCODE_CHANNEL" = "prod" ]; then
+              exit 1
+            fi
+          else
+            sudo xcode-select -s "$selected"
+            echo "Using $selected"
+            xcodebuild -version
+          fi
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ inputs.arch == 'arm64' && '--os=darwin --cpu=arm64' || '--os=darwin --cpu=x64' }}
+
+      # Desktop's darwin-x64 row bundles @opencode/cli-darwin-x64-baseline, so the CLI target keeps the
+      # baseline suffix. darwin-arm64 matches on both sides. packages/process-daemon is not compiled:
+      # packages/cli/script/build.ts embeds the published @opencode/pty package from the lockfile.
+      - name: Resolve targets
+        run: |
+          set -euo pipefail
+          case "$SEAL_ARCH" in
+            arm64)
+              echo "CLI_TARGET=darwin-arm64" >> "$GITHUB_ENV"
+              echo "CLI_DIR=cli-darwin-arm64" >> "$GITHUB_ENV"
+              echo "DESKTOP_TARGET=darwin-arm64" >> "$GITHUB_ENV"
+              echo "APP_PARENT=mac-arm64" >> "$GITHUB_ENV"
+              ;;
+            x64)
+              echo "CLI_TARGET=darwin-x64-baseline" >> "$GITHUB_ENV"
+              echo "CLI_DIR=cli-darwin-x64-baseline" >> "$GITHUB_ENV"
+              echo "DESKTOP_TARGET=darwin-x64" >> "$GITHUB_ENV"
+              echo "APP_PARENT=mac" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Unsupported arch: $SEAL_ARCH" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build CLI
+        working-directory: packages/cli
+        env:
+          OPENCODE_TARGET: ${{ env.CLI_TARGET }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("../../package.json"))["packageManager"].split("@", 1)[1])')"
+          test -n "$version"
+          echo "Compiling the fork CLI with bun-v${version} for ${OPENCODE_TARGET}"
+          BUN_COMPILE_RELEASE="bun-v${version}" bun run build
+          rm -rf dist/.bun
+          test -x "dist/${CLI_DIR}/bin/opencode"
+          test -s "dist/${CLI_DIR}/package.json"
+
+      - name: Check CLI architecture
+        run: |
+          set -euo pipefail
+          bin="packages/cli/dist/${CLI_DIR}/bin/opencode"
+          file -b "$bin"
+          if [ "$SEAL_ARCH" = "arm64" ]; then
+            file -b "$bin" | grep -q arm64
+          else
+            file -b "$bin" | grep -q x86_64
+          fi
+
+      - name: Build desktop
+        working-directory: packages/desktop
+        env:
+          OPENCODE_TARGET: ${{ env.DESKTOP_TARGET }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run build
+
+      # dev/beta would have downloaded the published CLI if dist was missing. The version file is copied
+      # from the package we just built (0.0.0-<channel>-<run>), which a published package does not use.
+      - name: Assert desktop bundled the fork CLI
+        run: |
+          set -euo pipefail
+          built="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "packages/cli/dist/${CLI_DIR}/package.json")"
+          bundled="$(tr -d '[:space:]' < packages/desktop/resources/opencode-cli.version)"
+          if [ "$built" != "$bundled" ]; then
+            echo "desktop bundled CLI ${bundled}, fork build is ${built}" >&2
+            exit 1
+          fi
+          echo "desktop resources use fork CLI ${bundled}"
+          test -s packages/desktop/resources/opencode-cli
+          for skill in typst-math math-worksheets cn-math-problem-design; do
+            test -s "packages/core/src/plugin/skill/${skill}.md"
+          done
+
+      - name: Pack desktop
+        working-directory: packages/desktop
+        timeout-minutes: 60
+        env:
+          OPENCODE_TARGET: ${{ env.DESKTOP_TARGET }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: bun run pack
+
+      - name: Ad-hoc sign and make disk image
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apps=( "packages/desktop/dist/${APP_PARENT}"/*.app )
+          if [ "${#apps[@]}" -ne 1 ]; then
+            echo "Expected one .app in packages/desktop/dist/${APP_PARENT}, found ${#apps[@]}" >&2
+            ls -la "packages/desktop/dist/${APP_PARENT}" >&2 || true
+            exit 1
+          fi
+          app="${apps[0]}"
+          case "$OPENCODE_CHANNEL" in
+            dev) product="Seal Dev" ;;
+            beta) product="Seal Beta" ;;
+            *) product="Seal" ;;
+          esac
+          if [ "$(basename "$app")" != "${product}.app" ]; then
+            echo "Expected ${product}.app, found $(basename "$app")" >&2
+            exit 1
+          fi
+
+          built="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "packages/cli/dist/${CLI_DIR}/package.json")"
+          bundled="$(tr -d '[:space:]' < "$app/Contents/Resources/opencode-cli.version")"
+          if [ "$built" != "$bundled" ]; then
+            echo "app bundle CLI ${bundled}, fork build is ${built}" >&2
+            exit 1
+          fi
+          echo "Seal.app contains fork CLI ${bundled}"
+          cli="$app/Contents/Resources/opencode-cli"
+          test -s "$cli"
+          file -b "$cli"
+          file -b "$app/Contents/MacOS/$product"
+          if [ "$SEAL_ARCH" = "arm64" ]; then
+            file -b "$cli" | grep -q arm64
+            file -b "$app/Contents/MacOS/$product" | grep -q arm64
+          else
+            file -b "$cli" | grep -q x86_64
+            file -b "$app/Contents/MacOS/$product" | grep -q x86_64
+          fi
+
+          xattr -cr "$app"
+          if ! codesign --force --deep --sign - "$app"; then
+            echo "Deep ad-hoc sign failed; signing the app executable and bundled CLI." >&2
+            codesign --force --sign - "$cli"
+            codesign --force --sign - "$app"
+          fi
+          codesign --verify --verbose=2 "$app"
+
+          out="dist/seal-macos"
+          rm -rf "$out"
+          mkdir -p "$out"
+          stage="$(mktemp -d)"
+          cp -R "$app" "$stage/"
+          ln -s /Applications "$stage/Applications"
+          dmg="$out/Seal-macOS-${SEAL_ARCH}.dmg"
+          hdiutil create -volname "$product" -srcfolder "$stage" -ov -format UDZO "$dmg"
+          rm -rf "$stage"
+
+          app_mb="$(du -sm "$app" | awk '{print $1}')"
+          dmg_mb="$(du -sm "$dmg" | awk '{print $1}')"
+          if [ "$dmg_mb" -gt $((app_mb * 3 + 50)) ]; then
+            echo "DMG is unexpectedly large (${dmg_mb} MB vs app ${app_mb} MB)" >&2
+            exit 1
+          fi
+          mount="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          test -L "$mount/Applications"
+          test -d "$mount/${product}.app"
+          hdiutil detach "$mount"
+          rmdir "$mount"
+
+          ditto -c -k --keepParent "$app" "$out/Seal-macOS-${SEAL_ARCH}.zip"
+          gzip -c -1 "dist/desktop/opencode-desktop-mac-${SEAL_ARCH}.app.tar" > "$out/Seal-macOS-${SEAL_ARCH}.app.tar.gz"
+          cat > "$out/INSTALL.txt" <<EOF
+          Seal macOS ${SEAL_ARCH} (${OPENCODE_CHANNEL})
+
+          This build is ad-hoc signed only. It is not signed with an Apple Developer ID and it is not notarized.
+          The bundled CLI was compiled from this repository before the desktop app was packaged.
+
+          Install
+          1. Open Seal-macOS-${SEAL_ARCH}.dmg.
+          2. Drag ${product} into Applications.
+          3. In Terminal, clear the download quarantine bit:
+
+             xattr -cr "/Applications/${product}.app"
+
+          4. In Finder, right-click ${product} and choose Open. Confirm Open.
+             If macOS still blocks it, use System Settings, Privacy & Security, Open Anyway.
+
+          Seal-macOS-${SEAL_ARCH}.zip and Seal-macOS-${SEAL_ARCH}.app.tar.gz are the same ${product}.app.
+          EOF
+          ls -lh "$out"
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Seal-macOS-${{ inputs.arch }}-${{ inputs.channel }}
+          path: dist/seal-macos/
+          retention-days: 30
+          compression-level: 1
+          if-no-files-found: error
