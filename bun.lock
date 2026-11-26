@@ -111,6 +111,7 @@
       "bin": {
         "opencode": "./bin/opencode.cjs",
         "opencode2": "./bin/opencode2.cjs",
+        "seal": "./bin/seal.cjs",
       },
       "dependencies": {
         "@agentclientprotocol/sdk": "1.6.0",

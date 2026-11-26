@@ -1,10 +1,10 @@
 [Desktop Entry]
-Name=OpenCode
-Exec=/opt/OpenCode/ai.opencode %U
+Name=Seal
+Exec=/opt/Seal/ai.opencode %U
 Terminal=false
 Type=Application
 Icon=ai.opencode
 StartupWMClass=ai.opencode.desktop
 NoDisplay=true
-Comment=Open source AI coding agent
+Comment=Personal assistant
 Categories=Development;

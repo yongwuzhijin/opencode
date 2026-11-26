@@ -5,35 +5,35 @@ test.each([
   {
     channel: "dev",
     packaged: true,
-    appName: "OpenCode Dev",
+    appName: "Seal Dev",
     appID: "ai.opencode.desktop.dev",
     appUserModelID: "ai.opencode.desktop.dev",
   },
   {
     channel: "beta",
     packaged: true,
-    appName: "OpenCode Beta",
+    appName: "Seal Beta",
     appID: "ai.opencode.desktop.beta",
     appUserModelID: "ai.opencode.desktop.beta",
   },
   {
     channel: "prod",
     packaged: true,
-    appName: "OpenCode",
+    appName: "Seal",
     appID: "ai.opencode.desktop",
     appUserModelID: "ai.opencode.desktop",
   },
   {
     channel: "local",
     packaged: false,
-    appName: "OpenCode Dev",
+    appName: "Seal Dev",
     appID: "ai.opencode.desktop.dev",
     appUserModelID: "ai.opencode.desktop.local",
   },
   {
     channel: "dev",
     packaged: false,
-    appName: "OpenCode Dev",
+    appName: "Seal Dev",
     appID: "ai.opencode.desktop.dev",
     appUserModelID: "ai.opencode.desktop.local",
   },
@@ -44,7 +44,7 @@ test.each([
   },
 )
 
-const installedExe = "C:\\Users\\user\\AppData\\Local\\Programs\\ai.opencode.desktop.dev\\OpenCode Dev.exe"
+const installedExe = "C:\\Users\\user\\AppData\\Local\\Programs\\ai.opencode.desktop.dev\\Seal Dev.exe"
 
 const devElectron = "D:\\repo\\node_modules\\electron\\dist\\electron.exe"
 

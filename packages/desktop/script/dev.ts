@@ -183,7 +183,7 @@ function hasLiveRegisteredService(serviceFile: string) {
   }
 }
 
-// When OpenCode Dev is already running, snapshot only its small desktop profile (`drafts.sqlite` + window state)
+// When Seal Dev is already running, snapshot only its small desktop profile (`drafts.sqlite` + window state)
 // into a per-worktree temp userData dir while sharing the main OpenCode database (`~/.local/share/opencode`) in place.
 function cloneLockedDevProfile() {
   if (process.env.OPENCODE_DESKTOP_USER_DATA || process.env.OPENCODE_DESKTOP_TEST_ROOT) return
@@ -226,7 +226,7 @@ function cloneLockedDevProfile() {
   process.env.OPENCODE_DESKTOP_REUSE_SERVER = "1"
   process.env.OPENCODE_DESKTOP_ISOLATED_SERVER = "0"
   process.env.OPENCODE_DESKTOP_REMOTE_DEBUGGING_PORT ??= "0"
-  console.log(`OpenCode Dev is already running; cloned UI state into ${cloneDir} and reusing live background server`)
+  console.log(`Seal Dev is already running; cloned UI state into ${cloneDir} and reusing live background server`)
 }
 
 async function startDesktop(args: string[]) {

@@ -75,7 +75,7 @@ export const prepareDesktop = Effect.gen(function* () {
 })
 
 // Earlier unpackaged dev runs shared `ai.opencode.desktop.dev`, so Electron's Windows toast
-// activator wrote a Start Menu `Electron.lnk` that shadows the installed OpenCode Dev shortcut and
+// activator wrote a Start Menu `Electron.lnk` that shadows the installed Seal Dev shortcut and
 // routes notification clicks to bare `electron.exe`. Remove it if it still claims this channel's AUMID.
 const removeCollidingDevShortcut = Effect.gen(function* () {
   if (process.platform !== "win32" || !app.isPackaged) return

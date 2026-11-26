@@ -20,6 +20,7 @@ await packDistribution({
   name: pkg.name,
   command: "opencode",
   legacyCommand: "opencode2",
+  aliases: ["seal"],
   binary: "opencode",
   packagePrefix: "@opencode/cli-",
   archive: (target) => target.startsWith("linux-"),
@@ -40,6 +41,7 @@ async function packDistribution(input: {
   name: string
   command: string
   legacyCommand?: string
+  aliases?: string[]
   binary: string
   packagePrefix: string
   archive: (target: string) => boolean
@@ -76,6 +78,7 @@ async function packDistribution(input: {
         bin: {
           [input.command]: `./bin/${input.command}.exe`,
           ...(input.legacyCommand ? { [input.legacyCommand]: `./bin/${input.command}.exe` } : {}),
+          ...Object.fromEntries((input.aliases ?? []).map((alias) => [alias, `./bin/${input.command}.exe`])),
         },
         ...(input.command !== input.binary ? { opencodeSourceBinary: input.binary } : {}),
         scripts: { postinstall: "node ./postinstall.mjs" },
