@@ -8,6 +8,7 @@ import { Credential } from "@opencode/core/credential"
 import { Integration } from "@opencode/core/integration"
 import { Location } from "@opencode/core/location"
 import { Model } from "@opencode/core/model"
+import { ModelResolver } from "@opencode/core/model-resolver"
 import { ModelsDev } from "@opencode/core/models-dev"
 import { Bus } from "@opencode/core/bus"
 import { Plugin } from "@opencode/core/plugin"
@@ -84,11 +85,15 @@ const request = Effect.fn(function* (
 })
 
 describe("OpenAIPlugin", () => {
-  it.effect("registers browser and headless ChatGPT OAuth methods", () =>
+  it.effect("registers the API key form and keeps the browser and headless OAuth methods", () =>
     Effect.gen(function* () {
       yield* addPlugin()
       const integrations = yield* Integration.Service
       expect((yield* integrations.get(Integration.ID.make("openai")))?.methods).toEqual([
+        {
+          type: "key",
+          form: [expect.objectContaining({ type: "string", key: "baseURL", format: "uri" })],
+        },
         {
           id: Integration.MethodID.make("chatgpt-browser"),
           type: "oauth",
@@ -311,6 +316,54 @@ describe("OpenAIPlugin", () => {
       expect(provider.headers).not.toHaveProperty("originator")
       expect(required(yield* models.get(Provider.ID.openai, Model.ID.make("gpt-4.1"))).enabled).toBe(true)
     }),
+  )
+
+  it.effect("uses the endpoint saved with the active OpenAI API key and drops it on switching keys", () =>
+    Effect.gen(function* () {
+      const catalog = yield* Provider.Service
+      const integrations = yield* Integration.Service
+      const credentials = yield* Credential.Service
+      const integrationID = Integration.ID.make("openai")
+      const modelID = Model.ID.make("gpt-5.5")
+      yield* catalog.transform((catalog) => {
+        catalog.update(Provider.ID.openai, (provider) => {
+          provider.package = "@opencode/ai/providers/openai"
+          provider.settings = { baseURL: "https://api.openai.com/v1" }
+        })
+        catalog.models.update(Provider.ID.openai, modelID, () => {})
+      })
+      yield* addPlugin()
+      yield* integrations.connection.key({
+        integrationID,
+        key: "sk-proxy",
+        answer: { baseURL: "https://proxy.example/v1/" },
+      })
+      yield* drain
+      const models = yield* Model.Service
+      const resolver = yield* ModelResolver.Service
+      const resolve = Effect.gen(function* () {
+        return yield* resolver.resolveModel(required(yield* models.get(Provider.ID.openai, modelID)))
+      })
+      const custom = yield* resolve
+      expect(custom.model.route.endpoint.baseURL).toBe("https://proxy.example/v1")
+      expect(custom.transport).toBe("http")
+
+      const rejected = yield* Effect.exit(
+        integrations.connection.key({
+          integrationID,
+          key: "sk-bad",
+          answer: { baseURL: "https://username:password@proxy.example/v1" },
+        }),
+      )
+      expect(rejected._tag).toBe("Failure")
+      expect(yield* credentials.list(integrationID)).toHaveLength(1)
+
+      yield* integrations.connection.key({ integrationID, key: "sk-official" })
+      yield* drain
+      const official = yield* resolve
+      expect(official.model.route.endpoint.baseURL).toBe("https://api.openai.com/v1")
+      expect(official.transport).toBe("websocket")
+    }).pipe(Effect.provide(ModelResolver.layer)),
   )
 
   it.effect("reloads providers on a switch only when the ChatGPT login changes", () =>

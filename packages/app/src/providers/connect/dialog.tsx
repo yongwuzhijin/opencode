@@ -931,8 +931,14 @@ function ProviderSteps(props: { provider: string; controller: ProviderDialogCont
     event.preventDefault()
 
     if (!(event.currentTarget instanceof HTMLFormElement)) return
-    const value = new FormData(event.currentTarget).get(name)
-    props.controller.input({ type: "entry.submitted", value: value instanceof File || value === null ? "" : value })
+    const form = new FormData(event.currentTarget)
+    const value = form.get(name)
+    const baseURL = form.get("baseURL")
+    props.controller.input({
+      type: "entry.submitted",
+      value: typeof value === "string" ? value : "",
+      baseURL: typeof baseURL === "string" ? baseURL : undefined,
+    })
   }
 
   function EntryField(input: {
@@ -952,6 +958,7 @@ function ProviderSteps(props: { provider: string; controller: ProviderDialogCont
             class="!w-full"
             appearance="large"
             name={input.name}
+            type={input.name === "apiKey" ? "password" : "text"}
             data-input={input.name === "apiKey" ? "provider-api-key" : undefined}
             placeholder={input.placeholder}
             readOnly={connect().submitting}
@@ -986,6 +993,26 @@ function ProviderSteps(props: { provider: string; controller: ProviderDialogCont
             ? language.t("provider.connect.console.serviceKeyDescription")
             : language.t("provider.connect.apiKey.description", { provider: name() })}
         </p>
+        <Show when={connect().baseURLField}>
+          {(field) => (
+            <label class="flex w-full flex-col gap-2 font-[530] leading-4 text-v2-text-text-base">
+              {language.t("provider.connect.apiKey.baseURL")}
+              <TextInput
+                class="!w-full"
+                appearance="large"
+                type="url"
+                name="baseURL"
+                placeholder={field().placeholder}
+                readOnly={connect().submitting}
+                autocomplete="off"
+                spellcheck={false}
+              />
+              <span class="font-[440] text-v2-text-text-muted">
+                {language.t("provider.connect.apiKey.baseURL.description")}
+              </span>
+            </label>
+          )}
+        </Show>
         <EntryField
           name="apiKey"
           label={language.t("provider.connect.apiKey.label", { provider: name() })}

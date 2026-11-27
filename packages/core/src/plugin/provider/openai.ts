@@ -1,4 +1,5 @@
 import type { IntegrationOAuthMethodRegistration } from "@opencode/plugin/effect/integration"
+import { Form } from "@opencode/schema/form"
 import { define } from "@opencode/plugin/effect/plugin"
 import type { SessionRequest } from "@opencode/plugin/effect/session"
 import { Deferred, Effect, Exit, Option, Schema, Semaphore } from "effect"
@@ -241,22 +242,45 @@ export const OpenAIPlugin = define({
   effect: Effect.fn(function* (ctx) {
     const loading = Semaphore.makeUnsafe(1)
     let chatgpt: Credential.OAuth | undefined
+    let apiBaseURL: string | undefined
 
     const load = Effect.fn("OpenAIPlugin.load")(function* () {
       const { credential } = yield* storedCredential(ctx, "openai")
       const previous = chatgpt
+      const previousBaseURL = apiBaseURL
+      apiBaseURL =
+        credential?.type === "key" && typeof credential.metadata?.baseURL === "string"
+          ? credential.metadata.baseURL.replace(/\/+$/, "")
+          : undefined
       chatgpt =
         credential?.type === "oauth" &&
         (credential.methodID === browserMethodID || credential.methodID === headlessMethodID)
           ? credential
           : undefined
       return (
+        previousBaseURL !== apiBaseURL ||
         (previous === undefined) !== (chatgpt === undefined) ||
         previous?.metadata?.accountID !== chatgpt?.metadata?.accountID
       )
     })
 
     yield* ctx.integration.transform((editor) => {
+      editor.method.update({
+        integrationID: Integration.ID.make("openai"),
+        method: {
+          type: "key",
+          form: Form.Fields.make([
+            Form.StringField.make({
+              type: "string",
+              key: "baseURL",
+              title: "Base URL",
+              placeholder: "https://api.openai.com/v1",
+              format: "uri",
+              pattern: String.raw`^https?://[^/?#@\s\\{}]+(?:/[^?#\s\\{}]*)?$`,
+            }),
+          ]),
+        },
+      })
       editor.method.update(browser(ctx.app))
       editor.method.update(headless(ctx.app))
     })
@@ -271,7 +295,8 @@ export const OpenAIPlugin = define({
       const account = chatgpt?.metadata?.accountID
       providers.update(item.provider.id, (provider) => {
         provider.settings = Provider.mergeOverlay(provider.settings, {
-          transport: provider.settings?.transport ?? "websocket",
+          transport: apiBaseURL ? "http" : (provider.settings?.transport ?? "websocket"),
+          ...(apiBaseURL ? { baseURL: apiBaseURL } : {}),
           ...(chatgpt ? { baseURL: codexBaseURL } : {}),
           // The ChatGPT backend rejects uncompressed bodies over ~1 MiB and decodes zstd.
           ...(chatgpt && configured?.baseURL === undefined ? { encoding: provider.settings?.encoding ?? "zstd" } : {}),

@@ -476,6 +476,33 @@ export const SettingsProviders: Component<{
     )
   }
 
+  function CatalogRow(props: { item: ReturnType<typeof popular>[number] }) {
+    const item = () => props.item
+
+    return (
+      <div class="settings-provider-row">
+        <div class="settings-provider-lead">
+          <ProviderModelIcon provider={item()} class="settings-provider-icon shrink-0" />
+
+          <div class="settings-provider-copy">
+            <div class="settings-provider-main">
+              <span class="settings-provider-name">{item().name}</span>
+              <Show when={item().id === "opencode" || item().id === "opencode-go"}>
+                <Badge>{language.t("dialog.provider.tag.recommended")}</Badge>
+              </Show>
+            </div>
+            <Show when={note(item().id)}>
+              {(key) => <p class="settings-provider-description">{language.t(key())}</p>}
+            </Show>
+          </div>
+        </div>
+        <Button size="normal" variant="neutral" icon="plus" onClick={() => connect(item().id)}>
+          {language.t("common.connect")}
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <>
       <div class="settings-tab-header">
@@ -633,35 +660,20 @@ export const SettingsProviders: Component<{
         <div class="settings-section">
           <h3 class="settings-section-title">{language.t("settings.providers.section.popular")}</h3>
           <SettingsList variant="catalog">
-            <For each={popular()}>
-              {(item) => (
-                <div class="settings-provider-row">
-                  <div class="settings-provider-lead">
-                    <ProviderModelIcon provider={item} class="settings-provider-icon shrink-0" />
-
-                    <div class="settings-provider-copy">
-                      <div class="settings-provider-main">
-                        <span class="settings-provider-name">{item.name}</span>
-                        <Show when={item.id === "opencode" || item.id === "opencode-go"}>
-                          <Badge>{language.t("dialog.provider.tag.recommended")}</Badge>
-                        </Show>
-                      </div>
-                      <Show when={note(item.id)}>
-                        {(key) => <p class="settings-provider-description">{language.t(key())}</p>}
-                      </Show>
-                    </div>
-                  </div>
-                  <Button size="normal" variant="neutral" icon="plus" onClick={() => connect(item.id)}>
-                    {language.t("common.connect")}
-                  </Button>
-                </div>
-              )}
-            </For>
+            <For each={popular().filter((item) => item.id === "openai")}>{(item) => <CatalogRow item={item} />}</For>
           </SettingsList>
 
-          <button type="button" class="settings-providers-view-all" onClick={() => connect()}>
-            {language.t("dialog.provider.viewAll")}
-          </button>
+          <details>
+            <summary class="settings-providers-view-all cursor-pointer">
+              {language.t("settings.providers.more")}
+            </summary>
+            <SettingsList variant="catalog">
+              <For each={popular().filter((item) => item.id !== "openai")}>{(item) => <CatalogRow item={item} />}</For>
+            </SettingsList>
+            <button type="button" class="settings-providers-view-all" onClick={() => connect()}>
+              {language.t("dialog.provider.viewAll")}
+            </button>
+          </details>
         </div>
       </div>
     </>
