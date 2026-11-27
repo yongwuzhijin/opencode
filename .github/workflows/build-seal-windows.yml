@@ -1,0 +1,98 @@
+name: Build Seal Windows Desktop
+
+on:
+  push:
+    branches: [windows-installer]
+    paths: [.github/workflows/build-seal-windows.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-seal-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows x64 installer
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      OPENCODE_CHANNEL: prod
+      OPENCODE_TARGET: windows-x64
+      NODE_OPTIONS: --max-old-space-size=4096
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Build the fork CLI
+        working-directory: packages/cli
+        env:
+          # Like the macOS installer, use the CLI channel that writes service.json.
+          OPENCODE_CHANNEL: latest
+          OPENCODE_TARGET: windows-x64-baseline
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content ../../package.json -Raw | ConvertFrom-Json).packageManager.Split('@')[1]
+          $env:BUN_COMPILE_RELEASE = "bun-v$version"
+          $env:OPENCODE_VERSION = "0.0.0-prod-$env:GITHUB_RUN_NUMBER"
+          if ($env:GITHUB_RUN_ATTEMPT -ne '1') {
+            $env:OPENCODE_VERSION += ".$env:GITHUB_RUN_ATTEMPT"
+          }
+          bun run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cli = 'dist/cli-windows-x64-baseline/bin/opencode.exe'
+          $actual = (& $cli --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:OPENCODE_VERSION) {
+            throw "The built CLI did not report the expected version."
+          }
+
+      - name: Build and stage Seal
+        working-directory: packages/desktop
+        run: |
+          bun run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run pack
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $app = '../../dist/desktop/app'
+          $forkCli = '../cli/dist/cli-windows-x64-baseline/bin/opencode.exe'
+          $bundledCli = "$app/resources/opencode-cli.exe"
+          if ((Get-FileHash $forkCli).Hash -ne (Get-FileHash $bundledCli).Hash) {
+            throw 'The staged app did not bundle the newly built fork CLI.'
+          }
+          if (Test-Path "$app/resources/app-update.yml") { throw 'Unexpected updater feed in Seal.' }
+
+          # pack.ts clears dist/desktop before starting an installer build.
+          $stagedApp = Join-Path $env:RUNNER_TEMP 'seal-app'
+          Move-Item -LiteralPath $app -Destination $stagedApp
+          "OPENCODE_DESKTOP_APP=$stagedApp" >> $env:GITHUB_ENV
+
+      - name: Make NSIS installer
+        working-directory: packages/desktop
+        run: |
+          bun run pack
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = '../../dist/seal-windows'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $installer = "$output/Seal-Windows-x64-Setup.exe"
+          Copy-Item -LiteralPath '../../dist/desktop/opencode-desktop-win-x64.exe' -Destination $installer
+          if ((Get-Item -LiteralPath $installer).Length -lt 1MB) { throw 'Installer is unexpectedly small.' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+          "$hash  Seal-Windows-x64-Setup.exe" | Set-Content -Encoding ascii "$output/SHA256SUMS.txt"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Seal-Windows-x64
+          path: dist/seal-windows/
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
