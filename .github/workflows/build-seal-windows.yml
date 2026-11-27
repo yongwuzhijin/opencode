@@ -48,11 +48,16 @@ jobs:
           }
           bun run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $cli = 'dist/cli-windows-x64-baseline/bin/opencode.exe'
-          $actual = (& $cli --version | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:OPENCODE_VERSION) {
-            throw "The built CLI did not report the expected version."
+          $cli = (Resolve-Path -LiteralPath 'dist/cli-windows-x64-baseline/bin/opencode.exe').Path
+          $reported = (& $cli --version | Out-String).Trim()
+          $status = $LASTEXITCODE
+          # Match the desktop version parser: accept "opencode v<version>" as well as bare versions.
+          $marker = $reported.LastIndexOf(' v')
+          $actual = if ($marker -ge 0) { $reported.Substring($marker + 2) } else { $reported }
+          if ($status -ne 0 -or $actual -ne $env:OPENCODE_VERSION) {
+            throw "CLI --version exited $status, reported '$reported', expected '$env:OPENCODE_VERSION'."
           }
+          Write-Host "Verified fork CLI $actual"
 
       - name: Build and stage Seal
         working-directory: packages/desktop
