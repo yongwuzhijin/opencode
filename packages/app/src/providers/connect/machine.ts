@@ -119,7 +119,7 @@ export type ProviderConnectEvent =
       readonly browser: number
       readonly opened: boolean
     }
-  | { readonly type: "entry.submitted"; readonly value: string }
+  | { readonly type: "entry.submitted"; readonly value: string; readonly baseURL?: string }
   | { readonly type: "paste.changed"; readonly value: string }
   | { readonly type: "paste.toggled"; readonly open: boolean }
   | { readonly type: "paste.submitted" }
@@ -184,10 +184,13 @@ export type ProviderConnectTransition = {
   readonly effects: ReadonlyArray<ProviderConnectEffect>
 }
 
-// Same order as the TUI: browser and command sign-ins first, API keys last.
+// Seal exposes only API keys for OpenAI. Other providers keep their existing sign-ins.
 export function connectMethods(integration: IntegrationInfo) {
   return integration.methods
-    .filter((method): method is ProviderConnectMethod => method.type !== "env")
+    .filter(
+      (method): method is ProviderConnectMethod =>
+        method.type !== "env" && (integration.id !== "openai" || method.type === "key"),
+    )
     .toSorted((a, b) => Number(a.type === "key") - Number(b.type === "key"))
 }
 
@@ -274,11 +277,20 @@ export function transitionProviderConnect(
 
     if (!event.value.trim()) return unchanged({ ...state, error: { type: "required" } })
 
+    const baseURL = openAIBaseURLField(state.catalog, state.signIn.method) ? event.baseURL?.trim() : undefined
     const attempt = state.attempt + 1
 
     return {
       state: { ...selection(state, attempt), status: "submitting", signIn: state.signIn },
-      effects: [{ type: "submit", attempt, signIn: state.signIn, value: event.value, answer: state.answer }],
+      effects: [
+        {
+          type: "submit",
+          attempt,
+          signIn: state.signIn,
+          value: event.value,
+          answer: baseURL ? { ...state.answer, baseURL } : state.answer,
+        },
+      ],
     }
   }
 
@@ -349,6 +361,7 @@ export function selectProviderConnectView(state: ProviderConnectState) {
     integration: catalog?.integration,
     methods: catalog?.methods ?? [],
     methodIndex,
+    baseURLField: catalog && signIn ? openAIBaseURLField(catalog, signIn.method) : undefined,
     method: methodIndex === undefined ? undefined : catalog?.methods.at(methodIndex),
     authorization,
     browserFailed: signIn?.kind === "browser" && signIn.browserFailed,
@@ -385,6 +398,14 @@ function screen(state: ProviderConnectState): ProviderConnectScreen {
   return "busy"
 }
 
+// Newer servers advertise the optional field on the key method. Older servers still accept just the key.
+function openAIBaseURLField(catalog: ProviderCatalog, method: ProviderConnectMethod) {
+  if (catalog.integration?.id !== "openai" || method.type !== "key" || method.form?.length !== 1) return
+
+  const field = method.form[0]
+  if (field?.type === "string" && field.key === "baseURL" && !field.required) return field
+}
+
 function select(
   catalog: ProviderCatalog,
   methodIndex: number,
@@ -392,8 +413,12 @@ function select(
   answer?: FormAnswer,
 ): ProviderConnectTransition {
   const method = catalog.methods[methodIndex]
+
   // An answered form already holds the defaults of its hidden fields; one with nothing to ask answers itself.
-  const form = answer ? undefined : createProviderFormState(method.type === "command" ? undefined : method.form)
+  const form =
+    answer || openAIBaseURLField(catalog, method)
+      ? undefined
+      : createProviderFormState(method.type === "command" ? undefined : method.form)
 
   if (form?.status === "active") return unchanged({ status: "form", attempt, catalog, methodIndex, form })
 

@@ -1815,6 +1815,7 @@ for (const row of [
     if (row.paid) await expect(connected.getByText("OpenCode Zen", { exact: true })).toBeVisible()
 
     if (!row.paid) await expect(settings.getByText("No connected providers")).toBeVisible()
+    await settings.getByText("More providers", { exact: true }).click()
     // Anthropic only exists in the integration fixture, so its row proves the integration list has loaded.
     await expect(settings.getByText("Anthropic", { exact: true })).toBeVisible()
     await expect(settings.getByText("OpenCode Console", { exact: true })).toHaveCount(row.console ? 1 : 0)
@@ -1839,12 +1840,56 @@ const consoleIntegrations = [
   { id: "opencode-go", name: "OpenCode Go", methods: [{ type: "key" }], connections: [] },
 ]
 
+test("providers: OpenAI is shown first and submits a custom Base URL with its API key", async ({ page }) => {
+  const submissions: unknown[] = []
+  const { settings } = await open(page, {
+    integrations: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        methods: [
+          { id: "oauth", type: "oauth", label: "Sign in with ChatGPT" },
+          { type: "key", form: [{ type: "string", key: "baseURL", title: "Base URL" }] },
+        ],
+        connections: [],
+      },
+      { id: "anthropic", name: "Anthropic", methods: [{ type: "key" }], connections: [] },
+    ],
+    onConnectKey: (input) => {
+      submissions.push(input.body)
+    },
+  })
+
+  await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  const openai = settings.locator(".settings-provider-row", { hasText: "OpenAI" })
+  const anthropic = settings.locator(".settings-provider-row", { hasText: "Anthropic" })
+  await expect(openai).toBeVisible()
+  await expect(anthropic).toBeHidden()
+  await settings.getByText("More providers", { exact: true }).click()
+  await expect(anthropic).toBeVisible()
+  await settings.getByText("More providers", { exact: true }).click()
+  await expect(anthropic).toBeHidden()
+
+  await openai.getByRole("button", { name: "Connect", exact: true }).click()
+  const dialog = connectDialog(page)
+  await expect(dialog.getByText("Sign in with ChatGPT", { exact: true })).toHaveCount(0)
+  await dialog.getByLabel(/^Base URL/).fill("https://proxy.example/v1")
+  const apiKey = dialog.getByPlaceholder("API key")
+  await expect(apiKey).toHaveAttribute("type", "password")
+  await apiKey.fill("sk-test")
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click()
+  await expect
+    .poll(() => submissions)
+    .toEqual([expect.objectContaining({ key: "sk-test", answer: { baseURL: "https://proxy.example/v1" } })])
+})
+
 test("providers: OpenCode Console signs in from its method list", async ({ page, context }) => {
   const url = "https://auth.example.test/device?user_code=ABCD-EFGH"
   await context.route("https://auth.example.test/**", (route) => route.fulfill({ body: "Sign in" }))
   const { settings } = await open(page, { integrations: consoleIntegrations, onIntegrationOAuth: () => ({ url }) })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings
     .locator(".settings-provider-row")
     .filter({ has: page.locator(".settings-provider-name", { hasText: /^OpenCode$/ }) })
@@ -1888,6 +1933,7 @@ test("providers: OpenCode Go connects with its own methods, not the Console sign
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings
     .locator(".settings-provider-row", { hasText: "OpenCode Go" })
     .getByRole("button", { name: "Connect", exact: true })
@@ -1916,6 +1962,7 @@ test("providers: a rejected API key shows the server error and can be sent again
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings
     .locator(".settings-provider-row", { hasText: "OpenRouter" })
     .getByRole("button", { name: "Connect", exact: true })
@@ -1953,6 +2000,7 @@ test("providers: Back during a pending API key request does not report the provi
 
   const held = await holdRoute(page, /\/api\/integration\/openrouter\/connect\/key(\?|$)/, { method: "POST" })
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings
     .locator(".settings-provider-row", { hasText: "OpenRouter" })
     .getByRole("button", { name: "Connect", exact: true })
@@ -2048,6 +2096,7 @@ test("providers: the connect dialog lists connected providers and manages their 
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
   const dialog = page.getByRole("dialog")
   const openai = dialog.locator('[data-provider-id="openai"]')
@@ -2139,6 +2188,7 @@ test("providers: adding an account starts a lone method once", async ({ page, co
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await dialog.locator('[data-provider-id="opencode-go"]').click()
@@ -2178,6 +2228,7 @@ test("providers: Back from a pending sign-in cancels it and lets a backdrop clic
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
   const dialog = page.getByRole("dialog")
   const popup = page.waitForEvent("popup")
@@ -2208,6 +2259,7 @@ test("providers: Back from a Claude Agent check started by Add account returns t
 
   const held = await holdRoute(page, /\/api\/integration\/claude-agent\/connect\/external(\?|$)/, { method: "POST" })
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await dialog.locator('[data-provider-id="claude-agent"]').click()
@@ -2251,6 +2303,7 @@ test("providers: Back from a Console connection without models returns to its si
   })
 
   await settings.getByRole("tab", { name: "Providers", exact: true }).click()
+  await settings.getByText("More providers", { exact: true }).click()
   await settings
     .locator(".settings-provider-row")
     .filter({ has: page.locator(".settings-provider-name", { hasText: /^OpenCode$/ }) })
@@ -2486,6 +2539,7 @@ test("providers: adding a Console account keeps the Console row in place", async
     }).observe(element, { childList: true, subtree: true, characterData: true })
   })
 
+  await settings.getByText("More providers", { exact: true }).click()
   await settings.getByRole("button", { name: "Show more providers", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await dialog.locator('[data-provider-id="opencode"]').click()

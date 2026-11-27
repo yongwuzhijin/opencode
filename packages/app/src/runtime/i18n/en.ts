@@ -183,6 +183,7 @@ export const dict = {
   "dialog.model.unpaid.addMore.title": "Add more models from popular providers",
   "dialog.model.unpaid.viewMoreProviders": "See 70+ more providers",
 
+  "settings.providers.more": "More providers",
   "dialog.provider.viewAll": "Show more providers",
   "dialog.provider.accounts.add": "Add account",
   "dialog.provider.accounts.connected": "Connected accounts",
@@ -275,6 +276,9 @@ export const dict = {
     "Enter your {{provider}} API key to connect your account and use {{provider}} models in OpenCode.",
   "provider.connect.apiKey.label": "{{provider}} API key",
   "provider.connect.apiKey.placeholder": "API key",
+  "provider.connect.apiKey.baseURL": "Base URL (optional)",
+  "provider.connect.apiKey.baseURL.description":
+    "Leave blank to use the configured or default OpenAI endpoint. Only enter a URL you trust with your API key.",
   "provider.connect.apiKey.required": "API key is required",
   "provider.connect.oauth.code.label": "{{method}} authorization code",
   "provider.connect.oauth.code.placeholder": "Authorization code",
